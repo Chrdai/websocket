@@ -1,0 +1,157 @@
+﻿<html>
+<head>
+	<style>
+		.cti_connect{
+			background:url(include/images/cti_connected.png) left center no-repeat;
+			padding-left:22px;
+		}
+	</style>
+	<script type="text/javascript" src="include/jquery-2.2.3.js"></script>
+	<script>
+		$(function(){
+			var ip = 'localhost';
+			var port = 80;
+			var userName = '1000';
+			var password = '21232f297a57a5a743894a0e4a801fc3';
+			var device = 801;
+			var queue = '';
+			
+			function cti(){
+				this.is_websocket = "您的浏览器不支持WebSocket";
+				this.cti_failure = "认证失败";
+			}
+			
+			// prototype 属性使您有能力向对象添加属性和方法
+			cti.prototype.connect = function(options){
+				console.log('params:',options);
+				// 连接中
+				loginMsg(4);
+				
+				this.opts = options;
+				if(window.WebSocket || window.MozWebSocket){
+					this._ws = new WebSocket(options.server) || new MozWebSocket(options.server);
+				}else{
+					// 浏览器不支持WebSocket
+					loginMsg(5);
+					console.log(this.is_websocket);
+					return;
+				}
+				this.listenEvent();
+			}
+			
+			cti.prototype.listenEvent = function(){
+				var _this = this;
+				var ws = this._ws;
+				
+				// 连接建立时触发
+				ws.onopen = function(){
+					var register = "Authentication\r\n" + _this.opts.userName + "\r\n" + _this.opts.password + "\r\n" + _this.opts.device + "\r\n\r\n";
+					ws.send(register);
+				}
+				
+				// 客户端接收服务器数据时触发
+				ws.onmessage = function(msg){
+					if(msg.data = "Authorized failure\r\n\r\n"){
+						// 连接失败
+						console.log(_this.opts.userName + _this.cti_failure);
+						return;
+					}else if(msg.data = "Authorized OK\r\n\r\n"){
+						// 连接成功
+						loginMsg(1);
+						// 维持心跳
+						_this.heartbeat();
+						// 动态登录
+						_this.send_dynamic_login(_this.opts);
+					}else{
+						// 服务主动给客户端推送的信息在这里处理
+						var str = msg.data;
+						str = '<root>' + str + '</root>';
+						_this.getValue(str);
+					}
+				}
+				
+				// 通信发生错误时触发
+				ws.onerror = function(e){
+					loginMsg(3);
+					console.log('onerror:', e);
+				}
+				
+				// 链接关闭时触发
+				ws.onclose = function(e){
+					loginMsg(3);
+					console.log('onclose:', e);
+					
+					// clearInterval() 方法可取消由 setInterval() 设置的 timeout。
+					// clearInterval() 方法的参数必须是由 setInterval() 返回的 ID 值。
+					clearInterval(_this.heartbeat_time);
+					
+					// 断线重连
+					setTimeout(function(){_this.connect(_this.opts)},3000);
+				}	
+			}
+			
+			// 心跳，有心跳，代表WebSocket通信正常
+			cti.prototype.heartbeat = function(){
+				var _this = this;
+				var ws = _this._ws;
+				_this.heartbeat_time = setInterval(function(){
+					ws.send("heartbeat\r\n\r\n");
+				},2000);
+			}
+			
+			// 动态登录
+			cti.prototype.send_dynamic_login = function(options){
+				var _this = this;
+				var ws = _this._ws;
+				this.opts = options;
+				var send_var = "<req_method>dynamic_login</req_method><agent>" + _this.opts.userName + "</agent></device>" + _this.opts.device + "</device><queue>" + _this.opts.queue + "</queue>\r\n\r\n";
+				ws.send(send_var);
+			}
+			
+			cti.prototype.getValue(){
+				try{
+					xmlDoc = new ActiveXObject("Microsoft.XMLDOM");
+				}
+				
+			}
+			
+			
+			window.CTI = new cti();
+			CTI.connect(
+				{
+					server:'ws://'+ip+':'+port,
+					userName: userName, 
+					password: password,
+					device:	device,
+					queue:queue,
+				}
+			);
+			
+			function loginMsg(tip){
+				switch(tip){
+					case 1:
+						$('#loginMsg').css('background-image','url(include/images/cti_connected)').find('a').html('已连接CTI服务器');
+						break;
+					case 2:
+						$('#loginMsg').css('background-image','url(include/images/cti_connecting.gif)').find('a').html('正在连接CTI服务器...');
+						break;
+					case 3:
+						$('#loginMsg').css('background-image','url(include/images/cti_connecting.gif)').find('a').html('连接CTI失败，正在重试...');
+						break;
+					case 4:
+						$('#loginMsg').css('background-image','url(include/images/cti_send.png)').find('a').text('正在向CTI服务器验证');
+						break;
+					case 5:
+						$('#loginMsg').css('background-image','url(include/images/cti_disconnect.png)').find('a').html('连接CTI失败，请刷新页面');
+						break;
+					default:
+						$('#loginMsg').css('background-image','url(include/images/cti_disconnect.png)').find('a').html('未连接到CTI服务器，请刷新页面或注销');
+				}
+			}
+		})
+	</script>
+</head>
+<body>
+	<div id="loginMsg" class="cti_connect"><a href="javascript://">已连接</a></div>
+</body>
+</html>
